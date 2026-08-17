@@ -1,0 +1,33 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.2
+    hooks:
+      - id: ruff-check
+        args: [--fix]     # безопасные исправления вносятся автоматически
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.14.1
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: uv run mypy      # тот же mypy, что в .venv - версия из uv.lock
+        language: system        # не создавать окружение, взять uv из PATH
+        types_or: [ python, pyi ] # не запускать, если в коммите нет python-файлов
+        pass_filenames: false   # не передавать имена файлов: mypy берёт files из pyproject
+        require_serial: true    # один процесс, без параллельных запусков
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.0
+    hooks:
+      - id: gitleaks       # ищет секреты в изменениях до того, как они попадут в коммит
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict     # не дать закоммитить <<<<<<< HEAD
+      - id: check-added-large-files  # не дать закоммитить дамп базы на 200 МБ
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-toml
