@@ -31,6 +31,33 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      ENVIRONMENT: ci
+      LOG_LEVEL: INFO
+      SECRET_KEY: ci-secret-not-a-real-one
+      POSTGRES_USER: ci
+      POSTGRES_PASSWORD: ci
+      POSTGRES_HOST: localhost
+      POSTGRES_DB: ci
+      POSTGRES_TEST_DB: ci_test
+      REDIS_URL: redis://localhost:6379/0
+
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -39,12 +66,8 @@ jobs:
           python-version: "3.13"
       - run: uv sync --frozen
       - run: uv run pytest -v
-        env:
-          ENVIRONMENT: ci
-          LOG_LEVEL: INFO
-          SECRET_KEY: ci-secret-not-a-real-one
-          POSTGRES_USER: ci
-          POSTGRES_PASSWORD: ci
-          POSTGRES_HOST: localhost
-          POSTGRES_DB: ci
-          REDIS_URL: redis://localhost:6379/0
+      - name: Migrations are reversible
+        run: |
+          uv run alembic upgrade head
+          uv run alembic downgrade base
+          uv run alembic upgrade head

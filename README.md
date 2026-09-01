@@ -18,9 +18,14 @@ Ruff · mypy (strict) · pytest · GitHub Actions
 - `docker compose`: приложение, PostgreSQL 17 и Redis 7 с healthcheck'ами
 - Проверки: Ruff, mypy в строгом режиме, pytest, pre-commit (включая поиск секретов)
 - CI на GitHub Actions: три параллельные джобы — линтер, типы, тесты
+- Асинхронный SQLAlchemy 2.0 + asyncpg, пул соединений с `pool_pre_ping`
+- Alembic-миграции (async), первая — таблица `users`
+- `GET /health/db` проверяет доступность базы, `GET /health` — только что процесс жив
+- Единый формат ошибок RFC 9457 (Problem Details) и заголовок `X-Request-ID` на любом ответе
+- Тесты гоняются на реальном PostgreSQL, изоляция — транзакция с SAVEPOINT на каждый тест
 
-PostgreSQL и Redis подняты в compose, но приложение к ним пока не обращается —
-подключение и миграции на следующем этапе.
+Redis поднят в compose, но приложение к нему пока не обращается — кэш и очереди на
+следующих этапах.
 
 ## Запуск
 
@@ -55,11 +60,15 @@ uv run uvicorn app.main:create_app --factory --reload
 ### Команды
 
 ```bash
-make lint        # ruff check + ruff format --check
-make typecheck   # mypy
-make test        # pytest
-make check       # всё сразу — то же, что гоняет CI
-make logs        # логи приложения
+make lint                       # ruff check + ruff format --check
+make typecheck                  # mypy
+make test                       # pytest
+make check                      # всё сразу — то же, что гоняет CI
+make logs                       # логи приложения
+make migrate                    # alembic upgrade head
+make revision m="add orders"    # alembic revision --autogenerate
+make downgrade                  # alembic downgrade -1
+make db-shell                   # psql внутри контейнера postgres
 ```
 
 ## Структура
@@ -69,13 +78,47 @@ src/app/
   main.py            create_app() и lifespan
   core/
     config.py        настройки приложения
+    db.py            async engine, session_factory, get_session
+    deps.py          общие Depends (DbSession)
+    errors.py        AppError и RFC 9457 Problem Details
+    request_id.py    middleware + ContextVar для X-Request-ID
+  models/            все SQLAlchemy-модели одним пакетом
   modules/           вертикальные срезы по доменам
     health/
       router.py
+migrations/          Alembic (async), env.py, versions/
 tests/
+  conftest.py        тестовая БД, изоляция транзакцией с SAVEPOINT
 ```
 
 Приложение построено как модульный монолит: каждый домен (каталог, корзина, заказы,
 платежи) — отдельный пакет в `modules/` со своими роутером, схемами и сервисом.
 Слоя репозиториев нет: `AsyncSession` в SQLAlchemy 2.0 уже реализует Unit of Work,
 и дублировать его обёрткой значило бы добавить код без новых возможностей.
+
+## База данных
+
+Таблица `users`: `id` (UUID), `email` (уникальный), `password_hash`, `full_name`,
+`role`, `is_active`, `email_verified_at`, `created_at`/`updated_at`. `role` — это
+`VARCHAR(32)` с `CHECK`, а не нативный PostgreSQL ENUM: добавить новое значение
+в ENUM — это блокирующая миграция таблицы, а `CHECK` меняется без блокировки и
+значения видны прямо в `\d users`, без похода в `pg_enum`.
+
+Первичный ключ — UUID (`gen_random_uuid()`), а не автоинкремент: id не выдаёт
+количество заказов и пользователей конкурентам и не даёт перебирать чужие записи
+по номеру. Плата за это честная — случайный UUID фрагментирует B-tree индекс
+первичного ключа сильнее, чем последовательный `bigint`; на больших таблицах это
+решается UUIDv7 (первые биты — таймстемп, вставки снова монотонны), но это уже
+отдельная оптимизация, не обязательная на старте.
+
+Пул соединений: `pool_size=5, max_overflow=10` на процесс — до 15 соединений
+с базой от одного воркера uvicorn. Реальный лимит считается как
+`(pool_size + max_overflow) × число процессов` и должен помещаться в
+`max_connections` PostgreSQL с запасом на служебные подключения (миграции,
+админ-доступ).
+
+Тесты не используют `Base.metadata.create_all` — схема накатывается теми же
+Alembic-миграциями, что и в проде, иначе тесты проверяли бы не то, что реально
+задеплоится. Изоляция — одна внешняя транзакция на тест с `SAVEPOINT`
+(`join_transaction_mode="create_savepoint"`): что бы тест ни закоммитил внутри,
+после него всё откатывается, и тесты не зависят от порядка запуска.

@@ -1,4 +1,4 @@
-.PHONY: up down logs lint format typecheck test check
+.PHONY: up down logs lint format typecheck test check migrate revision downgrade db-shell
 
 up:
 	docker compose up -d --build
@@ -24,3 +24,15 @@ test:
 	uv run pytest -v
 
 check: lint typecheck test
+
+migrate:
+	uv run alembic upgrade head
+
+revision:
+	uv run alembic revision --autogenerate -m "$(m)"
+
+downgrade:
+	uv run alembic downgrade -1
+
+db-shell:
+	docker compose exec postgres sh -c 'psql -U $$POSTGRES_USER -d $$POSTGRES_DB'
