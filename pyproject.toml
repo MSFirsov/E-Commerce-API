@@ -3,13 +3,17 @@ name = "e-commerce-api"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
+    "alembic>=1.19.1",
+    "asyncpg>=0.31.0",
     "fastapi>=0.141.1",
     "pydantic-settings>=2.15.0",
+    "sqlalchemy[asyncio]>=2.0",
     "uvicorn[standard]>=0.52.1",
 ]
 
 [dependency-groups]
 dev = [
+    "anyio>=4.14.2",
     "httpx>=0.28.1",
     "mypy>=2.3.0",
     "pre-commit>=4.6.2",
@@ -41,8 +45,8 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# S101 - «использован assert».
-"tests/*" = ["S101"]
+# S101 - «использован assert»; S106 - «пароль в аргументе» (в тестах это фикстурные данные).
+"tests/*" = ["S101", "S106"]
 
 [tool.mypy]
 python_version = "3.13"
@@ -56,4 +60,6 @@ disallow_untyped_defs = false   # в тестах не требовать анн
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"           # не помечать каждый async-тест декоратором вручную
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]

@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     postgres_host: str
     postgres_port: int = 5432
     postgres_db: str
+    postgres_test_db: str = "ecommerce_test"
+
+    db_echo: bool = False
 
     redis_url: str
 
