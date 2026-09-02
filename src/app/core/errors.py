@@ -42,6 +42,21 @@ class UnauthorizedError(AppError):
     title = "Authentication required"
 
 
+class InvalidCredentialsError(UnauthorizedError):
+    error_type = "invalid-credentials"
+    title = "Invalid email or password"
+
+
+class InvalidTokenError(UnauthorizedError):
+    error_type = "invalid-token"
+    title = "Invalid authentication token"
+
+
+class TokenExpiredError(UnauthorizedError):
+    error_type = "token-expired"
+    title = "Authentication token expired"
+
+
 class ForbiddenError(AppError):
     status_code = 403
     error_type = "forbidden"

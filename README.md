@@ -23,6 +23,9 @@ Ruff · mypy (strict) · pytest · GitHub Actions
 - `GET /health/db` проверяет доступность базы, `GET /health` — только что процесс жив
 - Единый формат ошибок RFC 9457 (Problem Details) и заголовок `X-Request-ID` на любом ответе
 - Тесты гоняются на реальном PostgreSQL, изоляция — транзакция с SAVEPOINT на каждый тест
+- Регистрация и вход: `POST /auth/register`, `POST /auth/login`, `GET /users/me`
+- Пароли — argon2id (`pwdlib`), хэширование вынесено в отдельный поток, не блокирует event loop
+- Access-токен — JWT (PyJWT, HS256), 15 минут жизни; в `/docs` есть кнопка Authorize
 
 Redis поднят в compose, но приложение к нему пока не обращается — кэш и очереди на
 следующих этапах.
@@ -79,13 +82,21 @@ src/app/
   core/
     config.py        настройки приложения
     db.py            async engine, session_factory, get_session
-    deps.py          общие Depends (DbSession)
+    deps.py          общие Depends (DbSession, CurrentUser)
     errors.py        AppError и RFC 9457 Problem Details
     request_id.py    middleware + ContextVar для X-Request-ID
+    security.py      хэш паролей (argon2id) и JWT (PyJWT)
   models/            все SQLAlchemy-модели одним пакетом
   modules/           вертикальные срезы по доменам
     health/
       router.py
+    auth/            регистрация, логин, выпуск JWT
+      router.py
+      schemas.py
+      service.py
+    users/           GET /me
+      router.py
+      schemas.py
 migrations/          Alembic (async), env.py, versions/
 tests/
   conftest.py        тестовая БД, изоляция транзакцией с SAVEPOINT
@@ -122,3 +133,25 @@ Alembic-миграциями, что и в проде, иначе тесты п�
 задеплоится. Изоляция — одна внешняя транзакция на тест с `SAVEPOINT`
 (`join_transaction_mode="create_savepoint"`): что бы тест ни закоммитил внутри,
 после него всё откатывается, и тесты не зависят от порядка запуска.
+
+## Аутентификация
+
+Пароли хранятся как argon2id-хэш (`pwdlib`), а не bcrypt: у bcrypt пароль молча
+обрезается до 72 байт, а argon2id — memory-hard функция, победитель Password
+Hashing Competition, рекомендован OWASP. Хэширование стоит десятки миллисекунд
+и намеренно тяжёлое — если считать его прямо в `async def`, это на всё это время
+блокирует event loop и, как следствие, все остальные запросы приложения, поэтому
+вызов вынесен в отдельный поток через `anyio.to_thread`.
+
+Access-токен — JWT (PyJWT, алгоритм HS256), живёт 15 минут. В claims — стандартные
+`sub`/`iat`/`exp`/`iss`/`aud`/`jti` (RFC 7519) и свои `typ`/`role`. `iss`/`aud`
+проверяются при декодировании, чтобы токен, выпущенный тем же секретом для другой
+цели, не прошёл; список разрешённых алгоритмов передаётся явно, а не берётся из
+заголовка токена — иначе токен с `alg: none` прошёл бы проверку сам себя.
+Честная оговорка: пока это единственный вид токена, без ротации и отзыва — refresh
+и логаут на следующем этапе.
+
+Ответ `/auth/login` на неверный пароль и на несуществующий email — один и тот же
+код и тело. Без этого по разнице ответов (или по времени, если для несуществующего
+email проверку пароля вообще пропустить) можно было бы перебором узнать, какие
+email вообще зарегистрированы в системе, не имея ни одного пароля.

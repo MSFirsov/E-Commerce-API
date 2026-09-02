@@ -7,7 +7,7 @@ from app.core.config import get_settings
 from app.core.db import engine
 from app.core.errors import register_error_handlers
 from app.core.request_id import request_id_middleware
-from app.modules import health
+from app.modules import auth, health, users
 
 
 @asynccontextmanager
@@ -27,5 +27,7 @@ def create_app() -> FastAPI:
     app.middleware("http")(request_id_middleware)
     register_error_handlers(app)
     app.include_router(health.router)
+    app.include_router(auth.router)
+    app.include_router(users.router)
 
     return app
