@@ -19,8 +19,9 @@ class AppError(Exception):
     error_type = "internal-error"
     title = "Internal server error"
 
-    def __init__(self, detail: str | None = None) -> None:
+    def __init__(self, detail: str | None = None, headers: dict[str, str] | None = None) -> None:
         self.detail = detail or self.title
+        self.headers = headers or {}
         super().__init__(self.detail)
 
 
@@ -63,6 +64,15 @@ class ForbiddenError(AppError):
     title = "Access denied"
 
 
+class TooManyRequestsError(AppError):
+    status_code = 429
+    error_type = "too-many-requests"
+    title = "Too many requests"
+
+    def __init__(self, detail: str | None = None, retry_after: int = 60) -> None:
+        super().__init__(detail, headers={"Retry-After": str(retry_after)})
+
+
 class ServiceUnavailableError(AppError):
     status_code = 503
     error_type = "service-unavailable"
@@ -75,6 +85,7 @@ def problem_response(
     error_type: str,
     title: str,
     detail: str,
+    headers: dict[str, str] | None = None,
     **extra: Any,
 ) -> JSONResponse:
     body: dict[str, Any] = {
@@ -86,7 +97,12 @@ def problem_response(
         "request_id": get_request_id(),
         **extra,
     }
-    return JSONResponse(body, status_code=status_code, media_type=PROBLEM_JSON)
+    return JSONResponse(
+        body,
+        status_code=status_code,
+        media_type=PROBLEM_JSON,
+        headers=headers,
+    )
 
 
 async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
@@ -96,6 +112,7 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         error_type=exc.error_type,
         title=exc.title,
         detail=exc.detail,
+        headers=exc.headers,
     )
 
 

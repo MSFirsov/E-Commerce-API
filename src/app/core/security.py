@@ -1,10 +1,14 @@
+import hashlib
+import secrets
 import time
 import uuid
+from datetime import timedelta
 from typing import Any
 
 import anyio
 import jwt
 from pwdlib import PasswordHash
+from redis.asyncio import Redis
 
 from app.core.config import get_settings
 from app.core.errors import InvalidTokenError, TokenExpiredError
@@ -13,6 +17,13 @@ JWT_ALGORITHM = "HS256"
 JWT_ISSUER = "e-commerce-api"
 JWT_AUDIENCE = "e-commerce-api-clients"
 ACCESS_TOKEN_TTL_SECONDS = 15 * 60
+
+REFRESH_TOKEN_BYTES = 32
+REFRESH_TOKEN_TTL = timedelta(days=30)
+REFRESH_FAMILY_MAX_TTL = timedelta(days=90)
+REFRESH_GRACE_PERIOD = timedelta(seconds=10)
+
+DENYLIST_KEY_PREFIX = "denylist:jti:"
 
 _settings = get_settings()
 _password_hash = PasswordHash.recommended()
@@ -68,3 +79,23 @@ def decode_access_token(token: str) -> dict[str, Any]:
         raise InvalidTokenError("Token is not an access token")
 
     return payload
+
+
+def generate_refresh_token() -> str:
+    return secrets.token_urlsafe(REFRESH_TOKEN_BYTES)
+
+
+def hash_refresh_token(raw_token: str) -> bytes:
+    return hashlib.sha256(raw_token.encode()).digest()
+
+
+async def deny_access_token(redis: Redis, payload: dict[str, Any]) -> None:
+    ttl = int(payload["exp"]) - int(time.time())
+    if ttl <= 0:
+        return
+
+    await redis.set(f"{DENYLIST_KEY_PREFIX}{payload['jti']}", "1", ex=ttl)
+
+
+async def is_access_token_denied(redis: Redis, jti: str) -> bool:
+    return await redis.exists(f"{DENYLIST_KEY_PREFIX}{jti}") == 1

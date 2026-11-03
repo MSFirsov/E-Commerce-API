@@ -26,6 +26,10 @@ class Settings(BaseSettings):
 
     redis_url: str
 
+    auth_refresh_in_body: bool = False
+    auth_cookie_secure: bool = True
+    rate_limit_enabled: bool = True
+
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
         extra="forbid",

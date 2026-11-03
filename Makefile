@@ -1,4 +1,4 @@
-.PHONY: up down logs lint format typecheck test check migrate revision downgrade db-shell
+.PHONY: up down logs lint format typecheck test check migrate revision downgrade db-shell create-admin
 
 up:
 	docker compose up -d --build
@@ -36,3 +36,6 @@ downgrade:
 
 db-shell:
 	docker compose exec postgres sh -c 'psql -U $$POSTGRES_USER -d $$POSTGRES_DB'
+
+create-admin:
+	uv run python -m app.cli create-admin --email $(email)

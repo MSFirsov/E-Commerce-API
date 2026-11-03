@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import CheckConstraint, DateTime, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TimestampMixin, str_enum
 
 
 class UserRole(StrEnum):
@@ -31,7 +31,7 @@ class User(TimestampMixin, Base):
     password_hash: Mapped[str] = mapped_column(Text)
     full_name: Mapped[str | None] = mapped_column(String(200))
     role: Mapped[UserRole] = mapped_column(
-        String(32),
+        str_enum(UserRole),
         server_default=UserRole.CUSTOMER,
     )
     is_active: Mapped[bool] = mapped_column(server_default=text("true"))
