@@ -1,6 +1,7 @@
 from datetime import datetime
+from enum import StrEnum
 
-from sqlalchemy import DateTime, MetaData, func
+from sqlalchemy import DateTime, Enum, MetaData, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 NAMING_CONVENTION = {
@@ -14,6 +15,16 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+
+def str_enum(enum_type: type[StrEnum], length: int = 32) -> Enum:
+    return Enum(
+        enum_type,
+        native_enum=False,
+        create_constraint=False,
+        length=length,
+        values_callable=lambda members: [member.value for member in members],
+    )
 
 
 class TimestampMixin:

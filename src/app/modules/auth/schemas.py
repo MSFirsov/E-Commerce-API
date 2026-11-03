@@ -31,6 +31,13 @@ class UserPublic(BaseModel):
     created_at: datetime
 
 
+class RefreshRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    refresh_token: str | None = None
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"  # noqa: S105 — тип токена, не секрет
+    refresh_token: str | None = None
